@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDA vs Ray Casting 시뮬레이터 (버그 수정판)</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f5f5f5; margin: 20px; }
+        h1 { font-size: 24px; color: #333; }
+        .container { display: flex; gap: 20px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .controls { display: flex; flex-direction: column; gap: 15px; width: 320px; }
+        .control-group { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; }
+        .control-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px;}
+        .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 5px;}
+        .slider-row input[type=range] { flex-grow: 1; cursor: pointer; }
+        .slider-val { width: 25px; text-align: right; font-weight: bold; color: #007bff; }
+        canvas { border: 2px solid #333; border-radius: 4px; background-color: white; }
+        .results { margin-top: 15px; font-size: 14px; line-height: 1.6; max-height: 250px; overflow-y: auto; }
+        .legend { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px;}
+        .color-box { width: 16px; height: 16px; border: 1px solid #aaa; border-radius: 3px; }
+        .path-text { font-size: 12px; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <h1>DDA vs Ray Casting 알고리즘 비교 (수정판)</h1>
+
+    <div class="container">
+        <div class="controls">
+            <!-- 시작점 컨트롤 -->
+            <div class="control-group">
+                <label>시작점 (Start)</label>
+                <div class="slider-row">
+                    <span>X:</span>
+                    <input type="range" id="startX" min="0" max="14" value="2">
+                    <span class="slider-val" id="startXVal">2</span>
+                </div>
+                <div class="slider-row">
+                    <span>Y:</span>
+                    <input type="range" id="startY" min="0" max="14" value="2">
+                    <span class="slider-val" id="startYVal">2</span>
+                </div>
+            </div>
+
+            <!-- 끝점 컨트롤 -->
+            <div class="control-group">
+                <label>끝점 (End)</label>
+                <div class="slider-row">
+                    <span>X:</span>
+                    <input type="range" id="endX" min="0" max="14" value="12">
+                    <span class="slider-val" id="endXVal">12</span>
+                </div>
+                <div class="slider-row">
+                    <span>Y:</span>
+                    <input type="range" id="endY" min="0" max="14" value="7">
+                    <span class="slider-val" id="endYVal">7</span>
+                </div>
+            </div>
+
+            <!-- 보기 모드 -->
+            <div class="control-group">
+                <label>보기 모드</label>
+                <div><input type="radio" name="mode" value="dda" id="modeDda"><label for="modeDda" style="display:inline; font-weight:normal; cursor:pointer;"> DDA만 보기</label></div>
+                <div><input type="radio" name="mode" value="ray" id="modeRay"><label for="modeRay" style="display:inline; font-weight:normal; cursor:pointer;"> Ray Casting만 보기</label></div>
+                <div><input type="radio" name="mode" value="both" id="modeBoth" checked><label for="modeBoth" style="display:inline; font-weight:normal; cursor:pointer;"> 둘 다 비교하기</label></div>
+                
+                <div class="legend">
+                    <div class="legend-item"><div class="color-box" style="background-color: rgba(0, 123, 255, 0.6);"></div> DDA 선택 셀</div>
+                    <div class="legend-item"><div class="color-box" style="background-color: rgba(220, 53, 69, 0.6);"></div> Ray Casting 선택 셀</div>
+                    <div class="legend-item"><div class="color-box" style="background-color: rgba(111, 66, 193, 0.8);"></div> 공통 (겹침)</div>
+                </div>
+            </div>
+
+            <!-- 결과 출력 -->
+            <div class="control-group results" id="resultText">
+                <!-- 결과 텍스트가 이곳에 삽입됩니다 -->
+            </div>
+        </div>
+
+        <div>
+            <canvas id="gridCanvas" width="600" height="600"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSize = 15;
+        const cellSize = canvas.width / gridSize;
+
+        const inputs = ['startX', 'startY', 'endX', 'endY'];
+        const radios = document.querySelectorAll('input[name="mode"]');
+        const resultText = document.getElementById('resultText');
+
+        let state = { startX: 2, startY: 2, endX: 12, endY: 7, mode: 'both' };
+
+        // 1. DDA 알고리즘 로직 (수정 없음, 정상 동작)
+        function getDDACells(x0, y0, x1, y1) {
+            let cells = [];
+            let dx = x1 - x0;
+            let dy = y1 - y0;
+            let steps = Math.max(Math.abs(dx), Math.abs(dy));
+
+            if (steps === 0) {
+                cells.push({x: x0, y: y0});
+                return cells;
+            }
+
+            let xInc = dx / steps;
+            let yInc = dy / steps;
+            let x = x0;
+            let y = y0;
+
+            for (let i = 0; i <= steps; i++) {
+                cells.push({x: Math.round(x), y: Math.round(y)});
+                x += xInc;
+                y += yInc;
+            }
+            return cells;
+        }
+
+        // 2. Ray Casting (Amanatides & Woo) 로직 [버그 수정 완료]
+        function getRayCastingCells(x0, y0, x1, y1) {
+            let cells = [];
+            let startX = x0 + 0.5;
+            let startY = y0 + 0.5;
+            let endX = x1 + 0.5;
+            let endY = y1 + 0.5;
+
+            let dirX = endX - startX;
+            let dirY = endY - startY;
+
+            let currentX = Math.floor(startX);
+            let currentY = Math.floor(startY);
+            let finalX = Math.floor(endX);
+            let finalY = Math.floor(endY);
+
+            cells.push({x: currentX, y: currentY});
+
+            if (currentX === finalX && currentY === finalY) return cells;
+
+            let stepX = Math.sign(dirX);
+            let stepY = Math.sign(dirY);
+
+            let tDeltaX = stepX !== 0 ? Math.abs(1 / dirX) : Infinity;
+            let tDeltaY = stepY !== 0 ? Math.abs(1 / dirY) : Infinity;
+
+            let tMaxX = stepX > 0 ? (currentX + 1 - startX) * tDeltaX : (startX - currentX) * tDeltaX;
+            let tMaxY = stepY > 0 ? (currentY + 1 - startY) * tDeltaY : (startY - currentY) * tDeltaY;
+            
+            if (stepX === 0) tMaxX = Infinity;
+            if (stepY === 0) tMaxY = Infinity;
+
+            // [수정 핵심] 부동소수점 오차로 인한 무한루프 및 오버슈팅을 막기 위해 
+            // 목표지점까지의 맨해튼 거리(Manhattan Distance)를 구해서 정확히 그 횟수만큼만 루프를 돌림
+            let exactSteps = Math.abs(finalX - currentX) + Math.abs(finalY - currentY);
+
+            for (let step = 0; step < exactSteps; step++) {
+                if (tMaxX < tMaxY) {
+                    tMaxX += tDeltaX;
+                    currentX += stepX;
+                } else {
+                    tMaxY += tDeltaY;
+                    currentY += stepY;
+                }
+                cells.push({x: currentX, y: currentY});
+            }
+            return cells;
+        }
+
+        // 3. 그리기 및 UI 업데이트 [렌더링 로직 개선]
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let ddaCells = getDDACells(state.startX, state.startY, state.endX, state.endY);
+            let rayCells = getRayCastingCells(state.startX, state.startY, state.endX, state.endY);
+
+            // 셀 색칠하기 (Set을 이용해 겹치는 부분을 명확한 보라색으로 칠하도록 수정)
+            let ddaSet = new Set(ddaCells.map(c => `${c.x},${c.y}`));
+            let raySet = new Set(rayCells.map(c => `${c.x},${c.y}`));
+
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    let isDda = ddaSet.has(`${x},${y}`);
+                    let isRay = raySet.has(`${x},${y}`);
+                    
+                    let drawX = x * cellSize;
+                    let drawY = y * cellSize;
+
+                    if (state.mode === 'both') {
+                        if (isDda && isRay) {
+                            ctx.fillStyle = 'rgba(111, 66, 193, 0.8)'; // 보라색
+                            ctx.fillRect(drawX, drawY, cellSize, cellSize);
+                        } else if (isDda) {
+                            ctx.fillStyle = 'rgba(0, 123, 255, 0.6)'; // 파란색
+                            ctx.fillRect(drawX, drawY, cellSize, cellSize);
+                        } else if (isRay) {
+                            ctx.fillStyle = 'rgba(220, 53, 69, 0.6)'; // 빨간색
+                            ctx.fillRect(drawX, drawY, cellSize, cellSize);
+                        }
+                    } else if (state.mode === 'dda' && isDda) {
+                        ctx.fillStyle = 'rgba(0, 123, 255, 0.8)';
+                        ctx.fillRect(drawX, drawY, cellSize, cellSize);
+                    } else if (state.mode === 'ray' && isRay) {
+                        ctx.fillStyle = 'rgba(220, 53, 69, 0.8)';
+                        ctx.fillRect(drawX, drawY, cellSize, cellSize);
+                    }
+                }
+            }
+
+            // 격자선 그리기
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= gridSize; i++) {
+                ctx.beginPath(); ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, canvas.height); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(canvas.width, i * cellSize); ctx.stroke();
+            }
+
+            // 실제 수학적 직선 그리기
+            let pixelStartX = state.startX * cellSize + cellSize / 2;
+            let pixelStartY = state.startY * cellSize + cellSize / 2;
+            let pixelEndX = state.endX * cellSize + cellSize / 2;
+            let pixelEndY = state.endY * cellSize + cellSize / 2;
+
+            ctx.strokeStyle = '#28a745'; 
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(pixelStartX, pixelStartY);
+            ctx.lineTo(pixelEndX, pixelEndY);
+            ctx.stroke();
+
+            ctx.fillStyle = 'black';
+            ctx.beginPath(); ctx.arc(pixelStartX, pixelStartY, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(pixelEndX, pixelEndY, 4, 0, Math.PI * 2); ctx.fill();
+
+            updateResults(ddaCells, rayCells);
+        }
+
+        function updateResults(ddaCells, rayCells) {
+            let html = `<strong>[탐색 데이터 분석]</strong><br><br>`;
+            
+            if (state.mode === 'dda' || state.mode === 'both') {
+                html += `<strong>DDA 탐색:</strong> ${ddaCells.length} 스텝<br>`;
+                html += `<div class="path-text" style="color:#007bff; margin-bottom:10px;">`;
+                html += ddaCells.map(c => `(${c.x},${c.y})`).join(' → ') + `</div>`;
+            }
+            if (state.mode === 'ray' || state.mode === 'both') {
+                html += `<strong>Ray Casting 탐색:</strong> ${rayCells.length} 스텝<br>`;
+                html += `<div class="path-text" style="color:#dc3545;">`;
+                html += rayCells.map(c => `(${c.x},${c.y})`).join(' → ') + `</div>`;
+            }
+            
+            resultText.innerHTML = html;
+        }
+
+        inputs.forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('input', (e) => {
+                state[id] = parseInt(e.target.value);
+                document.getElementById(id + 'Val').innerText = state[id];
+                draw();
+            });
+        });
+
+        radios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                state.mode = e.target.value;
+                draw();
+            });
+        });
+
+        draw();
+    </script>
+</body>
+</html>
