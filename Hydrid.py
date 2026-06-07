@@ -44,7 +44,7 @@ def scan_hybrid(px, py, pz, direction):
     checks, last_axis = 0, "x"
     while True:
         checks += 1
-        if sdX < sdY and sdX < sdZ: sdX += delX; ix += stX; last_axis = "x"
+        if sdX < sdY and sdX < sdZ: sdX += delX; ix += stX; last_axis = "x" 
         elif sdY < sdZ:             sdY += delY; iy += stY; last_axis = "y"
         else:                       sdZ += delZ; iz += stZ; last_axis = "z"
 
