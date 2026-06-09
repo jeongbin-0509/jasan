@@ -14,7 +14,7 @@ WORLD_SIZE = GRID_SIZE * VOXEL
 CAR_POS = (50, 200, 20)   # 자율주행차 센서 위치
 RAY_COUNT_LIST = [100, 300, 500, 1000, 2000]
 TARGET_SPEED_LIST = [1, 3, 5, 8]  # 움직이는 대상 속도
-FRAMES = 60
+FRAMES = 40
 
 
 # =========================
@@ -90,7 +90,7 @@ def get_true_dist(px, py, pz, direction, obj):
         if is_hit(x, y, z, obj):
             return dist
 
-        dist += 0.05
+        dist += 0.5
 
     return MAX_DEPTH
 
@@ -164,7 +164,7 @@ def scan_hybrid(px, py, pz, direction, obj):
         if is_hit(rx, ry, rz, obj):
             return fine_dist, checks
 
-        fine_dist += 0.05
+        fine_dist += 0.5
 
     return MAX_DEPTH, checks
 
